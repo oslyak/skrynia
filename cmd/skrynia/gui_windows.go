@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"unsafe"
 
-	"skrynia/vault"
+	"github.com/oslyak/skrynia/vault"
 )
 
 //go:embed icon.ico

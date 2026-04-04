@@ -1,4 +1,4 @@
-module skrynia
+module github.com/oslyak/skrynia
 
 go 1.25.0
 

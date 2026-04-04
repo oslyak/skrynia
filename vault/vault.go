@@ -18,7 +18,7 @@ import (
 	"strings"
 	"sync"
 
-	"skrynia/tpmkey"
+	"github.com/oslyak/skrynia/tpmkey"
 )
 
 var (

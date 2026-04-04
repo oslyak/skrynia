@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"skrynia/vault"
+	"github.com/oslyak/skrynia/vault"
 )
 
 var version = "dev"
