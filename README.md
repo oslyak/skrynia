@@ -103,11 +103,11 @@ skrynia --version                  # print version
 ## Architecture
 
 ```
-Reading:  skrynia get <s> <k>           →  stdout (CLI)
-Writing:  skrynia set <s> credentials   →  GUI (login + password)
-          skrynia set <s> api-key       →  GUI (masked input)
-          skrynia set <s> <sensitive>   →  GUI (auto-detected)
-          skrynia set <s> <k> <v>       →  CLI (non-sensitive)
+Reading:  skrynia get <service> <key>               →  stdout (CLI)
+Writing:  skrynia set <service> credentials         →  GUI (login + password)
+          skrynia set <service> api-key             →  GUI (masked input)
+          skrynia set <service> <sensitive>         →  GUI (auto-detected)
+          skrynia set <service> <key> <value>       →  CLI (non-sensitive)
 ```
 
 ### GUI by platform
