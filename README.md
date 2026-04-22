@@ -32,7 +32,8 @@ Credentials are stored in an AES-256-GCM encrypted vault, with the master key se
 - **Smart key detection** — `password`, `token`, `secret`, `api-key` auto-open GUI; non-sensitive values stay in CLI
 - **Supply-chain resistant** — no `.env` files, no `*credential*` patterns for malware to scan
 - **Cross-platform** — Linux (GTK4) + Windows (Win32 API), macOS (via GTK4)
-- **Reusable Go packages** — `vault` and `tpmkey` can be imported by other projects
+- **Headless variant** — `skrynia-cli` binary (built with `-tags nogui`) for servers, containers, and CI
+- **Reusable Go packages** — `vault` and `tpmkey` can be imported by other projects as standalone libraries
 
 ## Requirements
 
@@ -45,8 +46,8 @@ Credentials are stored in an AES-256-GCM encrypted vault, with the master key se
 ## Installation
 
 ```bash
-make build    # builds linux + windows binaries
-make install  # copies to ~/ai/bin/
+make build    # builds skrynia (linux GUI), skrynia-cli (linux nogui), skrynia.exe (windows)
+make install  # copies all three binaries to ~/ai/bin/
 ```
 
 ## Usage
@@ -94,10 +95,18 @@ skrynia set redmine password "val" --cli # force CLI for sensitive key
 skrynia list redmine               # list keys for a service
 skrynia delete redmine password    # delete a key
 skrynia delete redmine             # delete entire service
-skrynia env redmine                # print KEY=VALUE pairs
-skrynia export > backup.enc        # encrypted backup
-skrynia import < backup.enc        # restore from backup
+skrynia env redmine                # print normalized KEY=VALUE pairs (UPPERCASE, - → _)
+skrynia export > backup.enc        # encrypted backup to stdout
+skrynia import < backup.enc        # restore from stdin
 skrynia --version                  # print version
+```
+
+### Values that start with `--`
+
+Use the `--` separator to pass positional values that look like flags:
+
+```bash
+skrynia set myservice custom-flag -- --cli    # stored value is literally "--cli"
 ```
 
 ## Architecture
@@ -109,6 +118,20 @@ Writing:  skrynia set <service> credentials         →  GUI (login + password)
           skrynia set <service> <sensitive>         →  GUI (auto-detected)
           skrynia set <service> <key> <value>       →  CLI (non-sensitive)
 ```
+
+### Project structure
+
+Skrynia is split into **two reusable library packages** and **one application binary**:
+
+```
+skrynia/
+├── vault/        ← library: AES-256-GCM encrypted JSON store (get/set/list/delete/env/export/import)
+├── tpmkey/       ← library: TPM 2.0 seal/unseal of the 32-byte master key
+└── cmd/skrynia/  ← application: CLI + platform GUI (GTK4 on Linux/macOS, Win32 on Windows)
+```
+
+`vault` depends on `tpmkey`; both are free of GUI code and safe to import from other
+Go projects that need TPM-backed encrypted storage without the skrynia CLI itself.
 
 ### GUI by platform
 
@@ -142,17 +165,44 @@ Keys containing these words automatically open GUI: `password`, `passwd`, `secre
 
 ### Using as a Go library
 
+Either package can be imported independently. `vault` is the high-level API most
+projects will want; `tpmkey` is useful if you need raw TPM seal/unseal without the
+JSON store on top.
+
 ```go
 import (
-    "github.com/<user>/skrynia/vault"
-    "github.com/<user>/skrynia/tpmkey"
+    "github.com/oslyak/skrynia/vault"
+    "github.com/oslyak/skrynia/tpmkey"
 )
 
-v, err := vault.Open("/path/to/vault")
-defer v.Close()
+// Use the platform-default location, or pass your own base path.
+path, _ := vault.DefaultPath()
+v, err := vault.Open(path)
+if err != nil {
+    // TPM unavailable, user not in 'tss' group on Linux, etc.
+    return err
+}
+defer v.Close() // encrypts, flushes to disk, zeroes master key in memory
 
 password, err := v.Get("redmine", "password")
+_ = v.Set("redmine", "url", "https://rm.example.com")
+services, _ := v.List("")           // all service names
+keys, _     := v.List("redmine")    // all keys of a service
+env, _      := v.Env("redmine")     // {"LOGIN": "...", "PASSWORD": "..."} (keys normalized)
+blob, _     := v.Export()           // encrypted SKR1 backup
+
+// Lower-level TPM access (no JSON store):
+blob, key, err := tpmkey.SealNewKeyRetain() // 32-byte key sealed under TPM SRK
+key2, err      := tpmkey.Unseal(blob)
+available      := tpmkey.Available()         // probe without raising errors
 ```
+
+Both packages follow the contract: **no TPM → no operation**. There is no in-memory
+fallback, and `vault.Open` will return an error if `tpmkey.Available()` is false.
+
+📖 **Full integration guide** with concurrency, error handling, Docker notes, and API reference:
+[docs/library-integration.md](docs/library-integration.md) (English) ·
+[docs/library-integration.uk.md](docs/library-integration.uk.md) (Ukrainian)
 
 ### Export format
 
@@ -164,18 +214,35 @@ password, err := v.Get("redmine", "password")
 ## Build
 
 ```bash
-make build          # both platforms
-make build-linux    # linux/amd64 (CGO_ENABLED=1, needs GTK4 dev)
-make build-windows  # windows/amd64 (CGO_ENABLED=0)
-make test           # run all tests (requires TPM access)
-make install        # copy to ~/ai/bin/
+make build              # all three binaries
+make build-linux        # linux/amd64 GUI (CGO_ENABLED=1, needs GTK4 dev)
+make build-linux-nogui  # linux/amd64 CLI-only (CGO_ENABLED=0, -tags nogui)
+make build-windows      # windows/amd64 (CGO_ENABLED=0, pure syscall)
+make test               # run all tests (requires TPM access; uses `sg tss`)
+make install            # copy all binaries to ~/ai/bin/
+make bump               # increment patch version in VERSION file
+make clean              # remove build/bin/*
 ```
+
+### Build outputs
+
+| Binary             | Platform | GUI   | Use case                                 |
+|--------------------|----------|-------|------------------------------------------|
+| `skrynia`          | Linux    | GTK4  | Desktop workstation                      |
+| `skrynia-cli`      | Linux    | none  | Servers, containers, CI (set-with-value) |
+| `skrynia.exe`      | Windows  | Win32 | Windows desktop                          |
+
+The `-tags nogui` build has zero GTK dependency and statically-linked Go runtime —
+ideal for headless hosts where credentials are provisioned via `set <svc> <key> <val>`
+or `import < backup.enc`.
 
 ### Build dependencies
 
-**Linux**: `apt install libgtk-4-dev libgirepository1.0-dev`
+**Linux (GUI)**: `apt install libgtk-4-dev libgirepository1.0-dev`
 
-**Windows cross-compile**: `apt install gcc-mingw-w64-x86-64` (CGO not needed)
+**Linux (CLI-only)**: no dependencies beyond the Go toolchain
+
+**Windows cross-compile from Linux**: pure `CGO_ENABLED=0`, no MinGW needed
 
 ## ⚠️ Important: Auxiliary Storage Only
 

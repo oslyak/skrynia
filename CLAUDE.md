@@ -1,5 +1,12 @@
 # Skrynia - Cross-Platform Credential Manager
 
+## Project structure
+- `vault/` — library: AES-256-GCM encrypted JSON store, depends only on `tpmkey`
+- `tpmkey/` — library: raw TPM 2.0 seal/unseal under SRK (ECC-P256)
+- `cmd/skrynia/` — main application: CLI + GUI (GTK4 on Linux/macOS, Win32 on Windows)
+- Module path: `github.com/oslyak/skrynia`
+- Both library packages are GUI-free and reusable in other Go projects
+
 ## TPM 2.0 Encryption
 - **Requirement**: TPM 2.0 hardware is mandatory — no fallback
 - **Linux**: user must be in `tss` group, device `/dev/tpmrm0`
@@ -18,15 +25,19 @@
 - **No SQLite, no XOR** — pure AES-GCM with TPM-sealed key
 
 ## Build
-- **Linux**: `CGO_ENABLED=1` (GTK4 via gotk4 requires CGO)
-- **Windows**: `CGO_ENABLED=0` (pure Win32 API via syscall)
-- **Build**: `make build` (builds linux + windows)
+- **Linux GUI** (`skrynia`): `CGO_ENABLED=1` + GTK4 via gotk4
+- **Linux headless** (`skrynia-cli`): `CGO_ENABLED=0 -tags nogui` (no GTK, static Go)
+- **Windows** (`skrynia.exe`): `CGO_ENABLED=0` (pure Win32 API via syscall)
+- **Build**: `make build` (produces all three)
 - **Test**: `sg tss -c "go test ./..."` (needs tss group for TPM access)
-- **Install**: `make install` (copies to `~/ai/bin/`)
+- **Install**: `make install` (copies all binaries to `~/ai/bin/`)
+- **Bump version**: `make bump` (auto-increments patch in `VERSION`)
+- Build tag wiring: `cmd/skrynia/gui_linux.go` has `//go:build !windows && !nogui`, `cmd/skrynia/gui_nogui.go` has `//go:build nogui`
 
 ## GUI by Platform
-- **Linux/macOS**: GTK4 via `github.com/diamondburned/gotk4`
+- **Linux/macOS**: GTK4 via `github.com/diamondburned/gotk4` (excluded by `-tags nogui`)
 - **Windows**: Win32 API via `syscall` (no external dependencies)
+- **Headless Linux**: any `skrynia set` command that would open a GUI returns exit code 2 with a clear error
 
 ## CLI vs GUI Dispatch
 - `skrynia get <service> <key>` — CLI read (no GUI)

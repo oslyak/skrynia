@@ -63,18 +63,29 @@ func runSet(args []string) int {
 	}
 
 	forceGUI, forceCLI := false, false
-	filtered := args[:0:0]
-	for _, a := range args {
-		switch a {
-		case "--gui":
-			forceGUI = true
-		case "--cli":
-			forceCLI = true
-		default:
-			filtered = append(filtered, a)
+
+	// Strip "--" separator: everything after "--" is positional.
+	// e.g. skrynia set svc key -- --cli  →  value is "--cli"
+	dashDash := -1
+	for i, a := range args {
+		if a == "--" {
+			dashDash = i
+			break
 		}
 	}
-	args = filtered
+	if dashDash >= 0 {
+		// Rejoin: args before "--" + args after "--" (which are all positional).
+		args = append(args[:dashDash], args[dashDash+1:]...)
+	} else {
+		// No "--" separator: only treat the very last arg as a flag.
+		if last := args[len(args)-1]; last == "--gui" {
+			forceGUI = true
+			args = args[:len(args)-1]
+		} else if last == "--cli" {
+			forceCLI = true
+			args = args[:len(args)-1]
+		}
+	}
 
 	switch {
 	case len(args) >= 4:
