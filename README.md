@@ -35,7 +35,7 @@ Credentials are stored in an AES-256-GCM encrypted vault, with the master key se
 - **AES-256-GCM** — authenticated encryption at rest, not XOR or homebrew crypto
 - **Smart key detection** — `password`, `token`, `secret`, `api-key` auto-open GUI; non-sensitive values stay in CLI
 - **Supply-chain resistant** — no `.env` files, no `*credential*` patterns for malware to scan
-- **Cross-platform** — Linux (GTK4) + Windows (Win32 API), macOS (via GTK4)
+- **Cross-platform** — Linux (GTK4) + Windows (Win32 API); macOS not supported (no TPM 2.0 — Apple uses Secure Enclave)
 - **Headless variant** — `skrynia-cli` binary (built with `-tags nogui`) for servers, containers, and CI
 - **Reusable Go packages** — `vault` and `tpmkey` can be imported by other projects as standalone libraries
 
@@ -44,7 +44,7 @@ Credentials are stored in an AES-256-GCM encrypted vault, with the master key se
 - **TPM 2.0** hardware (no fallback — by design)
 - **Linux**: user must be in `tss` group, device `/dev/tpmrm0`, GTK4
 - **Windows**: TBS API, no special permissions needed
-- **macOS**: `brew install gtk4 gobject-introspection`
+- **macOS**: not supported — Apple devices have no TPM 2.0 (they use Secure Enclave, which `go-tpm` cannot access)
 - Go 1.25+ (for building)
 
 ## Installation
@@ -131,7 +131,7 @@ Skrynia is split into **two reusable library packages** and **one application bi
 skrynia/
 ├── vault/        ← library: AES-256-GCM encrypted JSON store (get/set/list/delete/env/export/import)
 ├── tpmkey/       ← library: TPM 2.0 seal/unseal of the 32-byte master key
-└── cmd/skrynia/  ← application: CLI + platform GUI (GTK4 on Linux/macOS, Win32 on Windows)
+└── cmd/skrynia/  ← application: CLI + platform GUI (GTK4 on Linux, Win32 on Windows)
 ```
 
 `vault` depends on `tpmkey`; both are free of GUI code and safe to import from other
@@ -143,7 +143,6 @@ Go projects that need TPM-backed encrypted storage without the skrynia CLI itsel
 |----------|-----------|-------------|-------------|
 | Linux    | GTK4 (gotk4) | libgtk-4 | ~12 MB |
 | Windows  | Win32 API (syscall) | none | ~3.5 MB |
-| macOS    | GTK4 (gotk4) | brew gtk4 | ~12 MB |
 
 ### Sensitive key auto-detection
 

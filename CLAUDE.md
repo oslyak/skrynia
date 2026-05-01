@@ -3,7 +3,7 @@
 ## Project structure
 - `vault/` — library: AES-256-GCM encrypted JSON store, depends only on `tpmkey`
 - `tpmkey/` — library: raw TPM 2.0 seal/unseal under SRK (ECC-P256)
-- `cmd/skrynia/` — main application: CLI + GUI (GTK4 on Linux/macOS, Win32 on Windows)
+- `cmd/skrynia/` — main application: CLI + GUI (GTK4 on Linux, Win32 on Windows; macOS not supported — no TPM 2.0)
 - Module path: `github.com/oslyak/skrynia`
 - Both library packages are GUI-free and reusable in other Go projects
 
@@ -35,7 +35,7 @@
 - Build tag wiring: `cmd/skrynia/gui_linux.go` has `//go:build !windows && !nogui`, `cmd/skrynia/gui_nogui.go` has `//go:build nogui`
 
 ## GUI by Platform
-- **Linux/macOS**: GTK4 via `github.com/diamondburned/gotk4` (excluded by `-tags nogui`)
+- **Linux**: GTK4 via `github.com/diamondburned/gotk4` (excluded by `-tags nogui`)
 - **Windows**: Win32 API via `syscall` (no external dependencies)
 - **Headless Linux**: any `skrynia set` command that would open a GUI returns exit code 2 with a clear error
 
