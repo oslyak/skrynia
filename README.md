@@ -1,5 +1,9 @@
 # Skrynia
 
+> **TPM-bound credentials your AI agent can't see.**
+
+![demo](docs/demo.gif)
+
 A credential manager built for the age of AI-assisted development.
 
 **The problem:** When you work with AI coding agents (Claude Code, Cursor, Codex, Copilot CLI), every command you type is seen by the agent — including passwords and API keys. Credentials leak into:
