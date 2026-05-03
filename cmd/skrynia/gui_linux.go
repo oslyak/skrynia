@@ -48,10 +48,18 @@ func btnText(lang string) string {
 	return "Save"
 }
 
+func appendServiceHeading(box *gtk.Box, service string) {
+	heading := gtk.NewLabel(service)
+	heading.AddCSSClass("title-2")
+	heading.SetHAlign(gtk.AlignStart)
+	heading.SetMarginBottom(6)
+	box.Append(heading)
+}
+
 func showCredentialsWindow(app *gtk.Application, v *vault.Vault, service, lang string) {
 	win := gtk.NewApplicationWindow(app)
 	win.SetTitle(makeTitle(lang, service))
-	win.SetDefaultSize(420, 200)
+	win.SetDefaultSize(420, 240)
 	win.SetResizable(false)
 
 	box := gtk.NewBox(gtk.OrientationVertical, 8)
@@ -59,6 +67,8 @@ func showCredentialsWindow(app *gtk.Application, v *vault.Vault, service, lang s
 	box.SetMarginBottom(15)
 	box.SetMarginStart(15)
 	box.SetMarginEnd(15)
+
+	appendServiceHeading(box, service)
 
 	loginLabel := gtk.NewLabel("Login")
 	if lang == "uk" {
@@ -116,7 +126,7 @@ func showCredentialsWindow(app *gtk.Application, v *vault.Vault, service, lang s
 func showAPIKeyWindow(app *gtk.Application, v *vault.Vault, service, lang string) {
 	win := gtk.NewApplicationWindow(app)
 	win.SetTitle(makeTitle(lang, service+" — API Key"))
-	win.SetDefaultSize(420, 150)
+	win.SetDefaultSize(420, 190)
 	win.SetResizable(false)
 
 	box := gtk.NewBox(gtk.OrientationVertical, 8)
@@ -124,6 +134,8 @@ func showAPIKeyWindow(app *gtk.Application, v *vault.Vault, service, lang string
 	box.SetMarginBottom(15)
 	box.SetMarginStart(15)
 	box.SetMarginEnd(15)
+
+	appendServiceHeading(box, service)
 
 	keyLabel := gtk.NewLabel("API Key")
 	if lang == "uk" {
@@ -162,7 +174,7 @@ func showAPIKeyWindow(app *gtk.Application, v *vault.Vault, service, lang string
 func showSingleFieldWindow(app *gtk.Application, v *vault.Vault, service, key, lang string) {
 	win := gtk.NewApplicationWindow(app)
 	win.SetTitle(makeTitle(lang, service+" — "+key))
-	win.SetDefaultSize(420, 150)
+	win.SetDefaultSize(420, 190)
 	win.SetResizable(false)
 
 	box := gtk.NewBox(gtk.OrientationVertical, 8)
@@ -170,6 +182,8 @@ func showSingleFieldWindow(app *gtk.Application, v *vault.Vault, service, key, l
 	box.SetMarginBottom(15)
 	box.SetMarginStart(15)
 	box.SetMarginEnd(15)
+
+	appendServiceHeading(box, service)
 
 	label := gtk.NewLabel(key)
 	label.SetHAlign(gtk.AlignStart)

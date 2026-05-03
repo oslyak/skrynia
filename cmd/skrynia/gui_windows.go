@@ -238,9 +238,9 @@ func runWin32Dialog(v *vault.Vault, service, lang string, def dialogDef) {
 	}
 	registerClassExW.Call(uintptr(unsafe.Pointer(&wc)))
 
-	// Calculate window size based on fields
+	// Calculate window size based on fields (extra space for service heading at top).
 	winW := 420
-	winH := 60 + len(def.fields)*60 + 50
+	winH := 60 + len(def.fields)*60 + 50 + 35
 
 	// Center on screen
 	screenW, _, _ := getSystemMetrics.Call(smCxScreen)
@@ -267,9 +267,21 @@ func runWin32Dialog(v *vault.Vault, service, lang string, def dialogDef) {
 
 	// Get default font
 	hFont := getDefaultFont()
+	hTitleFont := getTitleFont()
+
+	// Service heading at the top — large bold label so the user knows
+	// which service is being edited even if the window title is hidden.
+	hHeading, _, _ := createWindowExW.Call(0,
+		uintptr(unsafe.Pointer(utf16Ptr("STATIC"))),
+		uintptr(unsafe.Pointer(utf16Ptr(service))),
+		uintptr(wsChild|wsVisible|ssLeft),
+		15, 10, uintptr(winW-40), 26,
+		hwnd, 0, hInstance, 0,
+	)
+	sendMessage.Call(hHeading, wmSetFont, hTitleFont, 1)
 
 	// Create controls
-	yPos := 10
+	yPos := 45
 	for i, f := range def.fields {
 		// Label
 		hLabel, _, _ := createWindowExW.Call(0,
@@ -440,6 +452,21 @@ func getDefaultFont() uintptr {
 		uintptr(uint32(0xFFFFFFF1)), // -15 (height)
 		0, 0, 0,
 		400, // FW_NORMAL
+		0, 0, 0,
+		1,   // DEFAULT_CHARSET
+		0, 0, 5, // CLEARTYPE_QUALITY
+		0,
+		uintptr(unsafe.Pointer(utf16Ptr("Segoe UI"))),
+	)
+	return hFont
+}
+
+func getTitleFont() uintptr {
+	gdiCreateFont := gdi32.NewProc("CreateFontW")
+	hFont, _, _ := gdiCreateFont.Call(
+		uintptr(uint32(0xFFFFFFEC)), // -20 (height)
+		0, 0, 0,
+		700, // FW_BOLD
 		0, 0, 0,
 		1,   // DEFAULT_CHARSET
 		0, 0, 5, // CLEARTYPE_QUALITY
