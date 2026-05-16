@@ -13,13 +13,16 @@ import (
 var version = "dev"
 
 func main() {
-	os.Exit(run())
+	os.Exit(run(os.Args[1:]))
 }
 
-func run() int {
-	args := os.Args[1:]
-
+func run(args []string) int {
 	if len(args) == 0 {
+		printUsage()
+		return 0
+	}
+
+	if hasHelpFlag(args) {
 		printUsage()
 		return 0
 	}
@@ -27,9 +30,6 @@ func run() int {
 	switch args[0] {
 	case "--version", "-v":
 		fmt.Printf("skrynia v%s\n", version)
-		return 0
-	case "--help", "-h":
-		printUsage()
 		return 0
 	case "get":
 		if len(args) < 3 {
@@ -54,6 +54,18 @@ func run() int {
 		printUsage()
 		return 2
 	}
+}
+
+func hasHelpFlag(args []string) bool {
+	for _, arg := range args {
+		if arg == "--" {
+			return false
+		}
+		if arg == "--help" || arg == "-h" {
+			return true
+		}
+	}
+	return false
 }
 
 func runSet(args []string) int {
