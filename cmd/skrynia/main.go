@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"os"
 	"sort"
 	"strings"
@@ -47,7 +46,11 @@ func run(args []string) int {
 		})
 	case "set":
 		return runSet(args)
-	case "list", "delete", "env", "export", "import":
+	case "reset":
+		return runReset(args[1:])
+	case "export", "import":
+		return runTransfer(args[0], args[1:])
+	case "list", "delete", "env":
 		return runCLI(args)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command: %s\n", args[0])
@@ -141,7 +144,7 @@ func runSet(args []string) int {
 }
 
 // withVault opens the vault, runs fn, and guarantees Close() + key zeroing.
-func withVault(fn func(v *vault.Vault) int) int {
+func withVault(fn func(v *vault.Vault) int) (code int) {
 	dbPath, err := vault.DefaultPath()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
@@ -152,7 +155,12 @@ func withVault(fn func(v *vault.Vault) int) int {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		return 1
 	}
-	defer v.Close()
+	defer func() {
+		if err := v.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "error: closing vault: %v\n", err)
+			code = 1
+		}
+	}()
 	return fn(v)
 }
 
@@ -166,14 +174,20 @@ func printUsage() {
   skrynia set <service> <key>              Auto: GUI if sensitive, error otherwise
   skrynia set <service> <key> --gui        Force GUI for any key
   skrynia set <service> <key> <val> --cli  Force CLI (skip GUI even for sensitive)
-  skrynia list <service>                   List keys of a service
+  skrynia list [service]                   List services, or keys of a service
   skrynia delete <service> [key]           Delete service or key
   skrynia env <service>                    Print KEY=VALUE pairs
-  skrynia export                           Export encrypted backup
-  skrynia import                           Import encrypted backup
+  skrynia export [--password-file path] [file]  Password-encrypted portable backup
+  skrynia export --legacy [file]           Old TPM-bound backup (not portable)
+  skrynia import [--password-file path] [file]  Import backup (stdin if no file)
+  skrynia reset [--yes]                    Archive old files and create empty vault
   skrynia --version                        Print version
 
 Sensitive keys (auto-GUI): password, secret, token, api-key, private-key
+
+Export prompts for a password without echo; use a strong, unique passphrase.
+Export writes to stdout if no file is given; new files are never overwritten.
+Reset does not recover old passwords. It requires confirmation or explicit --yes.
 
 Examples:
   $(skrynia get redmine password)          Use in scripts
@@ -187,12 +201,16 @@ Examples:
 func runCLI(args []string) int {
 	switch args[0] {
 	case "list":
-		if len(args) < 2 {
-			fmt.Fprintln(os.Stderr, "usage: skrynia list <service>")
+		if len(args) > 2 {
+			fmt.Fprintln(os.Stderr, "usage: skrynia list [service]")
 			return 2
 		}
+		service := ""
+		if len(args) == 2 {
+			service = args[1]
+		}
 		return withVault(func(v *vault.Vault) int {
-			items, err := v.List(args[1])
+			items, err := v.List(service)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "error: %v\n", err)
 				return 1
@@ -238,31 +256,6 @@ func runCLI(args []string) int {
 			sort.Strings(keys)
 			for _, k := range keys {
 				fmt.Printf("%s=%s\n", k, env[k])
-			}
-			return 0
-		})
-
-	case "export":
-		return withVault(func(v *vault.Vault) int {
-			blob, err := v.Export()
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "error: %v\n", err)
-				return 1
-			}
-			os.Stdout.Write(blob)
-			return 0
-		})
-
-	case "import":
-		return withVault(func(v *vault.Vault) int {
-			blob, err := io.ReadAll(os.Stdin)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "error: %v\n", err)
-				return 1
-			}
-			if err := v.Import(blob); err != nil {
-				fmt.Fprintf(os.Stderr, "error: %v\n", err)
-				return 1
 			}
 			return 0
 		})

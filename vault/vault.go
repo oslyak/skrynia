@@ -25,6 +25,7 @@ var (
 	ErrNotFound   = errors.New("not found")
 	ErrBadMagic   = errors.New("invalid export format: bad magic")
 	ErrBadPayload = errors.New("invalid export format: cannot decode payload")
+	ErrLocked     = errors.New("vault is in use by another process")
 	exportMagic   = []byte{0x53, 0x4B, 0x52, 0x31} // "SKR1"
 )
 
@@ -34,6 +35,7 @@ type Vault struct {
 	basePath string // path without extension
 	key      []byte // 32-byte AES key (unsealed from TPM)
 	data     map[string]map[string]string
+	lock     *os.File
 }
 
 // DefaultPath returns the platform-specific vault base path (without extension).
@@ -72,6 +74,24 @@ func Open(basePath string) (*Vault, error) {
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return nil, fmt.Errorf("vault: mkdir error: %w", err)
 	}
+	lock, err := lockVault(basePath)
+	if err != nil {
+		return nil, err
+	}
+	opened := false
+	defer func() {
+		if !opened {
+			lock.Close()
+		}
+	}()
+	if err := checkReset(basePath); err != nil {
+		return nil, err
+	}
+	if _, err := os.Stat(basePath + ".key"); errors.Is(err, os.ErrNotExist) {
+		if _, err := os.Stat(basePath + ".dat"); !errors.Is(err, os.ErrNotExist) {
+			return nil, fmt.Errorf("vault: data exists without its key; restore the key or explicitly run skrynia reset")
+		}
+	}
 
 	// Load or create the master key via TPM
 	key, err := loadOrCreateKey(basePath + ".key")
@@ -86,10 +106,12 @@ func Open(basePath string) (*Vault, error) {
 		return nil, err
 	}
 
+	opened = true
 	return &Vault{
 		basePath: basePath,
 		key:      key,
 		data:     data,
+		lock:     lock,
 	}, nil
 }
 
@@ -114,7 +136,7 @@ func loadOrCreateKey(keyPath string) ([]byte, error) {
 
 	key, err := tpmkey.Unseal(sealedBlob)
 	if err != nil {
-		return nil, fmt.Errorf("vault: TPM unseal failed: %w", err)
+		return nil, fmt.Errorf("vault: TPM unseal failed: %w; if the old TPM is lost, use skrynia reset to archive the old files and start empty", err)
 	}
 	return key, nil
 }
@@ -143,6 +165,9 @@ func loadData(datPath string, key []byte) (map[string]map[string]string, error) 
 
 // save encrypts and writes the data to disk.
 func (v *Vault) save() error {
+	if v.key == nil {
+		return fmt.Errorf("vault: already closed")
+	}
 	plaintext, err := json.Marshal(v.data)
 	if err != nil {
 		return fmt.Errorf("vault: marshal data failed: %w", err)
@@ -171,8 +196,16 @@ func (v *Vault) Close() error {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 
+	if v.key == nil {
+		return nil
+	}
 	err := v.save()
 	zeroKey(v.key)
+	v.key = nil
+	if v.lock != nil {
+		err = errors.Join(err, v.lock.Close())
+		v.lock = nil
+	}
 	return err
 }
 
@@ -330,7 +363,22 @@ type exportRecord struct {
 func (v *Vault) Export() ([]byte, error) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
+	payload, err := v.exportPayload()
+	if err != nil {
+		return nil, err
+	}
+	defer zeroKey(payload)
+	encrypted, err := encryptAESGCM(v.key, payload)
+	if err != nil {
+		return nil, fmt.Errorf("vault: export encrypt error: %w", err)
+	}
+	return append(append([]byte{}, exportMagic...), encrypted...), nil
+}
 
+func (v *Vault) exportPayload() ([]byte, error) {
+	if v.key == nil {
+		return nil, fmt.Errorf("vault: already closed")
+	}
 	var records []exportRecord
 	// Sort services for deterministic output
 	services := make([]string, 0, len(v.data))
@@ -359,15 +407,7 @@ func (v *Vault) Export() ([]byte, error) {
 		return nil, fmt.Errorf("vault: export marshal error: %w", err)
 	}
 
-	encrypted, err := encryptAESGCM(v.key, payload)
-	if err != nil {
-		return nil, fmt.Errorf("vault: export encrypt error: %w", err)
-	}
-
-	blob := make([]byte, 0, len(exportMagic)+len(encrypted))
-	blob = append(blob, exportMagic...)
-	blob = append(blob, encrypted...)
-	return blob, nil
+	return payload, nil
 }
 
 // Import decrypts a blob and merges all records into the vault.
@@ -384,20 +424,39 @@ func (v *Vault) Import(blob []byte) error {
 	if err != nil {
 		return ErrBadPayload
 	}
+	defer zeroKey(payload)
+	return v.importPayload(payload)
+}
 
+func (v *Vault) importPayload(payload []byte) error {
 	var records []exportRecord
 	if err := json.Unmarshal(payload, &records); err != nil {
 		return ErrBadPayload
 	}
 
-	for _, r := range records {
-		if v.data[r.Service] == nil {
-			v.data[r.Service] = make(map[string]string)
+	merged := make(map[string]map[string]string, len(v.data))
+	for service, values := range v.data {
+		merged[service] = make(map[string]string, len(values))
+		for key, value := range values {
+			merged[service][key] = value
 		}
-		v.data[r.Service][r.Key] = r.Value
 	}
-
-	return v.save()
+	for _, r := range records {
+		if len(r.Service) > maxKeyLen || len(r.Key) > maxKeyLen || len(r.Value) > maxValueLen {
+			return ErrBadPayload
+		}
+		if merged[r.Service] == nil {
+			merged[r.Service] = make(map[string]string)
+		}
+		merged[r.Service][r.Key] = r.Value
+	}
+	previous := v.data
+	v.data = merged
+	if err := v.save(); err != nil {
+		v.data = previous
+		return err
+	}
+	return nil
 }
 
 // --- AES-256-GCM helpers ---

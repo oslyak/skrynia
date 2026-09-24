@@ -6,6 +6,8 @@ require (
 	github.com/diamondburned/gotk4/pkg v0.3.1
 	github.com/google/go-tpm v0.9.8
 	github.com/stretchr/testify v1.11.1
+	golang.org/x/sys v0.42.0
+	golang.org/x/term v0.41.0
 )
 
 require (
@@ -16,7 +18,6 @@ require (
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	go4.org/unsafe/assume-no-moving-gc v0.0.0-20231121144256-b99613f794b6 // indirect
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c // indirect
-	golang.org/x/sys v0.42.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20200227125254-8fa46927fb4f // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
